@@ -1,3 +1,5 @@
+![Raspberry Pi OLED System Info Display Logo](./assets/logo.png)
+
 # Raspberry Pi OLED System Info Display
 
 This project displays real-time system information (IP Address, CPU Usage, CPU Temperature, Current Time, and RAM Usage) on a 128x32 I2C OLED display connected to a Raspberry Pi. The script is configured to run automatically as a systemd service on boot.
