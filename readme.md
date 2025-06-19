@@ -1,4 +1,3 @@
-
 # Raspberry Pi OLED System Info Display
 
 This project displays real-time system information (IP Address, CPU Usage, CPU Temperature, Current Time, and RAM Usage) on a 128x32 I2C OLED display connected to a Raspberry Pi. The script is configured to run automatically as a systemd service on boot.
@@ -87,6 +86,12 @@ Paste the following code into the file, then save and exit (`Ctrl+O`, `Enter`, `
     import subprocess
     import datetime
     import psutil
+    import signal
+    import sys
+    import logging
+
+    # Logging configuration
+    logging.basicConfig(level=logging.INFO)
 
     # Initialize I2C
     # Using absolute paths for board.SCL and board.SDA can sometimes help in systemd environments
@@ -114,13 +119,24 @@ Paste the following code into the file, then save and exit (`Ctrl+O`, `Enter`, `
     except IOError:
         font = ImageFont.load_default()
 
+    def clear_and_exit(signum, frame):
+        """Clear display and exit the program."""
+        oled.fill(0)
+        oled.show()
+        sys.exit(0)
+
+    # Register signal handlers for graceful shutdown
+    signal.signal(signal.SIGTERM, clear_and_exit)
+    signal.signal(signal.SIGINT, clear_and_exit)
+
     def get_ip_address():
         """Get local IP address."""
         # Using absolute paths for commands for robustness in systemd service
         cmd = "/usr/bin/hostname -I | /usr/bin/cut -d' ' -f1"
         try:
             return subprocess.check_output(cmd, shell=True).decode("utf-8").strip()
-        except subprocess.CalledProcessError:
+        except subprocess.CalledProcessError as e:
+            logging.error(f"Failed to get IP address: {e}")
             return "No IP"
 
     def get_cpu_temperature():
@@ -235,4 +251,47 @@ After rebooting, your OLED display should show the system information updating e
 * **Text going out of screen:** The current code uses font size 8, which is generally the smallest readable. If it still goes out, consider simplifying the displayed information (e.g., removing one metric).
 * **IP address shows "No IP":** The `network-online.target` in the service file should help, but if the network isn't ready in time, the script might capture "No IP" initially. This usually resolves itself on the next update once the network is fully up.
 
+## Recent Improvements
+
+- **Graceful Shutdown:**  
+  The script now handles SIGTERM and SIGINT signals. When stopped (e.g., via `systemctl stop` or Ctrl+C), it clears the OLED display before exiting, preventing stale information from remaining on the screen.
+
+- **Logging:**  
+  Error handling now uses Python's `logging` module. If the script fails to retrieve the IP address or CPU temperature, it logs an error message, making troubleshooting easier via `journalctl`.
+
+- **Main Function Structure:**  
+  The main loop is now encapsulated in a `main()` function, and the script uses the `if __name__ == "__main__":` pattern. This improves readability and maintainability.
+
+- **Code Readability:**  
+  Functions are modular, and exception handling is explicit, making the code easier to extend and debug.
+
+### Example: Graceful Exit and Logging
+
+```python
+import signal
+import sys
+import logging
+
+logging.basicConfig(level=logging.INFO)
+
+def clear_and_exit(signum, frame):
+    oled.fill(0)
+    oled.show()
+    sys.exit(0)
+
+signal.signal(signal.SIGTERM, clear_and_exit)
+signal.signal(signal.SIGINT, clear_and_exit)
+
+def get_ip_address():
+    cmd = "/usr/bin/hostname -I | /usr/bin/cut -d' ' -f1"
+    try:
+        return subprocess.check_output(cmd, shell=True).decode("utf-8").strip()
+    except subprocess.CalledProcessError as e:
+        logging.error(f"Failed to get IP address: {e}")
+        return "No IP"
+```
+
 ---
+
+**Tip:**  
+If you want to further customize the display (e.g., change refresh rate or displayed metrics), consider adding command-line arguments using Python's `argparse` module.

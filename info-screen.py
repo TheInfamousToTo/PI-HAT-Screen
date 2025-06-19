@@ -6,6 +6,11 @@ from PIL import Image, ImageDraw, ImageFont
 import subprocess
 import datetime
 import psutil
+import signal
+import sys
+import logging
+
+logging.basicConfig(level=logging.INFO)
 
 # Initialize I2C
 # Using absolute paths for board.SCL and board.SDA can sometimes help in systemd environments
@@ -39,7 +44,8 @@ def get_ip_address():
     cmd = "/usr/bin/hostname -I | /usr/bin/cut -d' ' -f1"
     try:
         return subprocess.check_output(cmd, shell=True).decode("utf-8").strip()
-    except subprocess.CalledProcessError:
+    except subprocess.CalledProcessError as e:
+        logging.error(f"Failed to get IP address: {e}")
         return "No IP"
 
 def get_cpu_temperature():
@@ -49,7 +55,8 @@ def get_cpu_temperature():
     try:
         temp_str = subprocess.check_output(cmd, shell=True).decode("utf-8")
         return f"{float(temp_str) / 1000.0:.1f}°C"
-    except (subprocess.CalledProcessError, ValueError):
+    except (subprocess.CalledProcessError, ValueError) as e:
+        logging.error(f"Failed to get CPU temperature: {e}")
         return "N/A" # Handle cases where temp might not be readable
 
 def get_ram_usage():
@@ -62,26 +69,38 @@ def get_cpu_usage():
     # cpu_percent(interval=None) gets utilization since last call, suitable for loop
     return psutil.cpu_percent(interval=None)
 
-while True:
-    # Clear the image for the new drawing
-    draw.rectangle((0, 0, oled.width, oled.height), outline=0, fill=0)
-
-    # Get the information
-    ip_address = get_ip_address()
-    cpu_temp = get_cpu_temperature()
-    ram_usage = get_ram_usage()
-    cpu_usage = psutil.cpu_percent(interval=None) # Recalculate each time for more current value
-    current_time = datetime.datetime.now().strftime("%H:%M") # HH:MM format
-
-    # Draw the text on the image
-    # Line 1: IP Address and CPU Usage
-    draw.text((0, 0), f"IP:{ip_address} CPU:{cpu_usage:.0f}%", font=font, fill=255)
-    # Line 2: Temperature, Current Time, and RAM Usage
-    draw.text((0, 16), f"Tmp:{cpu_temp} Tm:{current_time} R:{ram_usage:.0f}%", font=font, fill=255)
-
-    # Display the image on the OLED
-    oled.image(image)
+def clear_and_exit(signum, frame):
+    oled.fill(0)
     oled.show()
+    sys.exit(0)
 
-    # Wait for 5 seconds before updating again
-    time.sleep(5)
+signal.signal(signal.SIGTERM, clear_and_exit)
+signal.signal(signal.SIGINT, clear_and_exit)
+
+def main():
+    while True:
+        # Clear the image for the new drawing
+        draw.rectangle((0, 0, oled.width, oled.height), outline=0, fill=0)
+
+        # Get the information
+        ip_address = get_ip_address()
+        cpu_temp = get_cpu_temperature()
+        ram_usage = get_ram_usage()
+        cpu_usage = psutil.cpu_percent(interval=None) # Recalculate each time for more current value
+        current_time = datetime.datetime.now().strftime("%H:%M") # HH:MM format
+
+        # Draw the text on the image
+        # Line 1: IP Address and CPU Usage
+        draw.text((0, 0), f"IP:{ip_address} CPU:{cpu_usage:.0f}%", font=font, fill=255)
+        # Line 2: Temperature, Current Time, and RAM Usage
+        draw.text((0, 16), f"Tmp:{cpu_temp} Tm:{current_time} R:{ram_usage:.0f}%", font=font, fill=255)
+
+        # Display the image on the OLED
+        oled.image(image)
+        oled.show()
+
+        # Wait for 5 seconds before updating again
+        time.sleep(5)
+
+if __name__ == "__main__":
+    main()
